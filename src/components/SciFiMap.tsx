@@ -32,7 +32,7 @@ const M = createContext<Mats>(null!);
 const useM = () => useContext(M);
 type V3 = [number, number, number];
 const Box = ({ p, s, m, r }: { p: V3; s: V3; m: THREE.Material; r?: V3 }) => (
-  <mesh position={p} rotation={r} material={m} castShadow receiveShadow><boxGeometry args={s} /></mesh>
+  <mesh position={p} rotation={r ?? [0, 0, 0]} material={m} castShadow receiveShadow><boxGeometry args={s} /></mesh>
 );
 
 function Container({ p, rot = 0, c = 0, open = false }: { p: V3; rot?: number; c?: number; open?: boolean }) {
@@ -62,7 +62,7 @@ function Barrel({ p, c = 0, tilt = 0 }: { p: V3; c?: number; tilt?: number }) {
   const m = useM();
   return (
     <group position={p} rotation-z={tilt}>
-      <mesh position-y={0.45} material={m.barrels[c % 3]} castShadow receiveShadow><cylinderGeometry args={[0.3, 0.3, 0.9, 24]} /></mesh>
+      <mesh position-y={0.45} material={m.barrels[c % 3]!} castShadow receiveShadow><cylinderGeometry args={[0.3, 0.3, 0.9, 24]} /></mesh>
       {[0.15, 0.45, 0.75].map((y) => <mesh key={y} position-y={y} material={m.steel}><torusGeometry args={[0.305, 0.015, 6, 24]} /></mesh>)}
       <mesh position-y={0.905} rotation-x={-Math.PI / 2} material={m.frame}><circleGeometry args={[0.28, 24]} /></mesh>
     </group>
