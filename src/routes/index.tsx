@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import SciFiMap from "@/components/SciFiMap";
+import SciFiMap from "../../map/SciFiMap";
 
 export const Route = createFileRoute("/")({
   ssr: false,

@@ -29,4 +29,4 @@ use the editor.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
 
-- Graphics quality presets live in src/game/graphics.ts (plain TS, tested); SciFiMap reads the active preset for textures, shadows, lights, DPR and post-processing — add new quality knobs there, not inline.
+- All map code lives in root /map (see map/README.md); graphics quality presets live in map/quality/graphics.ts (plain TS, tested); map/SciFiMap.tsx reads the active preset for textures, shadows, lights, DPR and post-processing — add new quality knobs there, not inline.

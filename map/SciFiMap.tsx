@@ -3,7 +3,7 @@ import { OrbitControls, Environment, Lightformer, Sky, Instances, Instance } fro
 import { EffectComposer, Bloom, N8AO, Vignette, SMAA, BrightnessContrast, HueSaturation } from "@react-three/postprocessing";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useThree } from "@react-three/fiber";
-import { PRESETS, PRESET_ORDER, loadPreset, savePreset, effectiveDpr, type GraphicsPreset, type PresetId } from "@/game/graphics";
+import { PRESETS, PRESET_ORDER, loadPreset, savePreset, effectiveDpr, type GraphicsPreset, type PresetId } from "./quality/graphics";
 import * as THREE from "three";
 import * as T from "./textures";
 
