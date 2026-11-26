@@ -28,3 +28,5 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- Graphics quality presets live in src/game/graphics.ts (plain TS, tested); SciFiMap reads the active preset for textures, shadows, lights, DPR and post-processing — add new quality knobs there, not inline.

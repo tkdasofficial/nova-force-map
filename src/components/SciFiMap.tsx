@@ -1,12 +1,15 @@
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, Lightformer, Sky, Instances, Instance } from "@react-three/drei";
 import { EffectComposer, Bloom, N8AO, Vignette, SMAA, BrightnessContrast, HueSaturation } from "@react-three/postprocessing";
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useThree } from "@react-three/fiber";
+import { PRESETS, PRESET_ORDER, loadPreset, savePreset, effectiveDpr, type GraphicsPreset, type PresetId } from "@/game/graphics";
 import * as THREE from "three";
 import * as T from "./textures";
 
 type Mats = ReturnType<typeof buildMats>;
-function buildMats() {
+function buildMats(q: GraphicsPreset) {
+  T.setTextureQuality(q.textureScale, q.anisotropy);
   const bump = T.corrugatedBump();
   const cont = (c: string, seed: number) => new THREE.MeshStandardMaterial({ map: T.corrugated(c, seed), bumpMap: bump, bumpScale: 3, metalness: 0.55, roughness: 0.55 });
   return {
@@ -29,6 +32,15 @@ function buildMats() {
   };
 }
 const M = createContext<Mats>(null!);
+const Q = createContext<GraphicsPreset>(PRESETS.hd);
+const useQ = () => useContext(Q);
+function disposeMats(m: Mats) {
+  const seen = new Set<THREE.Texture>();
+  for (const v of Object.values(m)) for (const mat of (Array.isArray(v) ? v : [v]) as THREE.MeshStandardMaterial[]) {
+    for (const t of [mat.map, mat.bumpMap, mat.roughnessMap, mat.alphaMap]) if (t && !seen.has(t)) { seen.add(t); t.dispose(); }
+    mat.dispose();
+  }
+}
 const useM = () => useContext(M);
 type V3 = [number, number, number];
 const Box = ({ p, s, m, r }: { p: V3; s: V3; m: THREE.Material; r?: V3 }) => (
@@ -174,7 +186,7 @@ function Tower({ p, h = 14 }: { p: V3; h?: number }) {
       <mesh position-y={h + 4} material={m.steel}><cylinderGeometry args={[0.05, 0.08, 2.6, 8]} /></mesh>
       <mesh position-y={h + 5.35} material={m.red}><sphereGeometry args={[0.14, 16, 16]} /></mesh>
       <mesh position={[1.3, h + 3.2, 0]} rotation-z={0.5} material={m.steel}><sphereGeometry args={[0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} /></mesh>
-      <pointLight position={[0, h + 1, 0]} color="#ffb070" intensity={6} distance={8} />
+      {useQ().lighting === "high" && <pointLight position={[0, h + 1, 0]} color="#ffb070" intensity={6} distance={8} />}
     </group>
   );
 }
@@ -198,7 +210,7 @@ function Lamp({ p, rot = 0 }: { p: V3; rot?: number }) {
       <Box p={[0.6, 6, 0]} s={[1.3, 0.08, 0.08]} m={m.darkMetal} />
       <Box p={[1.15, 5.92, 0]} s={[0.5, 0.1, 0.25]} m={m.frame} />
       <Box p={[1.15, 5.86, 0]} s={[0.44, 0.02, 0.2]} m={m.amber} />
-      <pointLight position={[1.15, 5.6, 0]} color="#ffb070" intensity={18} distance={12} decay={1.6} />
+      {useQ().lighting !== "low" && <pointLight position={[1.15, 5.6, 0]} color="#ffb070" intensity={18} distance={12} decay={1.6} />}
     </group>
   );
 }
@@ -240,10 +252,11 @@ function Bunker({ p, rot = 0 }: { p: V3; rot?: number }) {
   );
 }
 
-function World() {
-  const mats = useMemo(buildMats, []);
+function World({ q }: { q: GraphicsPreset }) {
+  const mats = useMemo(() => buildMats(q), [q.textureScale, q.anisotropy]);
+  useEffect(() => () => disposeMats(mats), [mats]);
   return (
-    <M.Provider value={mats}>
+    <Q.Provider value={q}><M.Provider value={mats}>
       <mesh rotation-x={-Math.PI / 2} receiveShadow material={mats.floor}><planeGeometry args={[50, 50]} /></mesh>
       <mesh rotation-x={-Math.PI / 2} position-y={-0.02} material={mats.concrete} receiveShadow><planeGeometry args={[300, 300]} /></mesh>
       <PerimeterWall />
@@ -300,42 +313,104 @@ function World() {
       <Lamp p={[8, 0, 8]} rot={(-3 * Math.PI) / 4} />
       <Lamp p={[-8, 0, 6]} rot={-Math.PI / 4} />
       <Lamp p={[7, 0, -10]} rot={(3 * Math.PI) / 4} />
-    </M.Provider>
+    </M.Provider></Q.Provider>
+  );
+}
+
+function GraphicsApplier({ q }: { q: GraphicsPreset }) {
+  const { gl, scene, setDpr } = useThree();
+  useEffect(() => {
+    setDpr(effectiveDpr(window.devicePixelRatio || 1, q));
+  }, [q, setDpr]);
+  useEffect(() => {
+    gl.shadowMap.enabled = q.shadows;
+    scene.environmentIntensity = q.reflections;
+    scene.traverse((o) => {
+      const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      if (mat) for (const m of Array.isArray(mat) ? mat : [mat]) m.needsUpdate = true;
+    });
+  }, [q, gl, scene]);
+  return null;
+}
+
+function Effects({ q }: { q: GraphicsPreset }) {
+  if (q.postProcessing === "off") return null;
+  if (q.postProcessing === "basic")
+    return (
+      <EffectComposer multisampling={0}>
+        <Bloom mipmapBlur intensity={0.4} luminanceThreshold={1} />
+        <SMAA />
+        <Vignette offset={0.3} darkness={0.5} />
+      </EffectComposer>
+    );
+  return (
+    <EffectComposer multisampling={0}>
+      <N8AO halfRes aoRadius={1.5} intensity={q.ambientOcclusion ? 2.5 : 0} distanceFalloff={1} />
+      <Bloom mipmapBlur intensity={0.6} luminanceThreshold={1} />
+      <HueSaturation saturation={0.08} />
+      <BrightnessContrast contrast={0.08} />
+      <SMAA />
+      <Vignette offset={0.3} darkness={0.55} />
+    </EffectComposer>
+  );
+}
+
+function GraphicsMenu({ value, onChange }: { value: PresetId; onChange: (p: PresetId) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="absolute right-4 top-4 flex flex-col items-end gap-2 font-mono">
+      <button onClick={() => setOpen((o) => !o)} aria-label="Settings"
+        className="rounded-md border border-border bg-card/80 px-3 py-2 text-[10px] tracking-[0.2em] text-card-foreground backdrop-blur">
+        ⚙ SETTINGS
+      </button>
+      {open && (
+        <div className="w-56 rounded-md border border-border bg-card/90 p-3 text-card-foreground backdrop-blur">
+          <div className="mb-2 text-[10px] tracking-[0.2em] text-muted-foreground">GRAPHICS QUALITY</div>
+          <div className="grid grid-cols-3 gap-1">
+            {PRESET_ORDER.map((id) => (
+              <button key={id} onClick={() => onChange(id)} aria-pressed={value === id}
+                className={`rounded px-1 py-2 text-[10px] font-bold tracking-wider transition-colors ${value === id ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
+                {PRESETS[id].label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 export default function SciFiMap() {
+  const [presetId, setPresetId] = useState<PresetId>("hd");
+  useEffect(() => { setPresetId(loadPreset(window.localStorage)); }, []);
+  const choose = (id: PresetId) => { setPresetId(id); savePreset(window.localStorage, id); };
+  const q = PRESETS[presetId];
   const [ready, setReady] = useState(false);
   return (
     <div className="fixed inset-0 bg-background" data-scene-ready={ready ? "" : undefined}>
-      <Canvas shadows dpr={[1, 1.75]} camera={{ position: [2, 24, 40], fov: 45 }}
+      <Canvas shadows dpr={1} camera={{ position: [2, 24, 40], fov: 45 }}
         gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.9, antialias: false }}
         onCreated={() => setTimeout(() => setReady(true), 300)}>
         <Sky sunPosition={[60, 18, 40]} turbidity={6} rayleigh={1.4} mieCoefficient={0.006} mieDirectionalG={0.85} />
         <fog attach="fog" args={["#c8b9a6", 60, 180]} />
         <hemisphereLight args={["#cfe0ff", "#6b5a48", 0.5]} />
-        <directionalLight castShadow position={[30, 24, 20]} intensity={3.2} color="#ffe2bf"
-          shadow-mapSize={[4096, 4096]} shadow-bias={-0.0003} shadow-normalBias={0.03}
+        <directionalLight castShadow={q.shadows} key={q.shadowMapSize} position={[30, 24, 20]} intensity={3.2} color="#ffe2bf"
+          shadow-mapSize={[q.shadowMapSize || 512, q.shadowMapSize || 512]} shadow-bias={-0.0003} shadow-normalBias={0.03}
           shadow-camera-left={-34} shadow-camera-right={34} shadow-camera-top={34} shadow-camera-bottom={-34} shadow-camera-far={120} />
         <Environment resolution={256}>
           <Lightformer intensity={1.5} position={[0, 10, 0]} rotation-x={Math.PI / 2} scale={[40, 40, 1]} color="#dfe8ff" />
           <Lightformer intensity={2.5} color="#ffd2a0" position={[30, 6, 20]} scale={[20, 6, 1]} />
           <Lightformer intensity={0.8} color="#8fb0d8" position={[-20, 3, -10]} rotation-y={Math.PI / 2} scale={[40, 3, 1]} />
         </Environment>
-        <World />
+        <World q={q} />
+        <GraphicsApplier q={q} />
         <OrbitControls makeDefault maxPolarAngle={Math.PI / 2.08} minDistance={4} maxDistance={80} target={[0, 1, 0]} enableDamping />
-        <EffectComposer multisampling={0}>
-          <N8AO halfRes aoRadius={1.5} intensity={2.5} distanceFalloff={1} />
-          <Bloom mipmapBlur intensity={0.6} luminanceThreshold={1} />
-          <HueSaturation saturation={0.08} />
-          <BrightnessContrast contrast={0.08} />
-          <SMAA />
-          <Vignette offset={0.3} darkness={0.55} />
-        </EffectComposer>
+        <Effects q={q} />
       </Canvas>
       <div className="pointer-events-none absolute left-4 top-4 font-mono text-[10px] tracking-[0.2em] text-foreground/80 drop-shadow">
         SECTOR-07 · 50×50 M<br />DRAG TO ORBIT · PINCH TO ZOOM
       </div>
+      <GraphicsMenu value={presetId} onChange={choose} />
     </div>
   );
 }

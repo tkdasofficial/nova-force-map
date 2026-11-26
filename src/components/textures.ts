@@ -2,11 +2,15 @@ import * as THREE from "three";
 
 type Ctx = CanvasRenderingContext2D;
 function rng(seed: number) { return () => ((seed = (seed * 16807) % 2147483647) / 2147483647); }
-function make(size: number, draw: (g: Ctx, s: number, r: () => number) => void, seed = 3, srgb = true, rep: [number, number] = [1, 1]) {
+let SCALE = 1, ANISO = 8;
+export function setTextureQuality(scale: number, aniso: number) { SCALE = scale; ANISO = aniso; }
+function make(baseSize: number, draw: (g: Ctx, s: number, r: () => number) => void, seed = 3, srgb = true, rep: [number, number] = [1, 1]) {
+  const size = Math.max(64, Math.round(baseSize * SCALE));
   const c = document.createElement("canvas"); c.width = c.height = size;
-  const g = c.getContext("2d")!; draw(g, size, rng(seed));
+  const g = c.getContext("2d")!;
+  g.save(); g.scale(size / baseSize, size / baseSize); draw(g, baseSize, rng(seed)); g.restore();
   const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(...rep); t.anisotropy = 8;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(...rep); t.anisotropy = ANISO; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
